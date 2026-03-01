@@ -14,16 +14,30 @@ Logs:   stderr only
 
 import argparse
 import json
+import os
 import sys
+import time
 import urllib.request
 from web3 import Web3
 from web3.middleware import ExtraDataToPOAMiddleware
 from eth_account import Account
 
-# ── 1claw config ──────────────────────────────────────────────────────────────
-VAULT_ID  = "REDACTED_VAULT_ID"
-AGENT_ID  = "REDACTED_AGENT_ID"
-API_KEY   = "REDACTED_API_KEY"
+# ── 1claw config (loaded from environment or ~/.openclaw/redbotster.env) ──────
+def _load_env_file():
+    env_file = os.path.expanduser("~/.openclaw/redbotster.env")
+    if os.path.exists(env_file):
+        with open(env_file) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ.setdefault(k.strip(), v.strip())
+
+_load_env_file()
+
+VAULT_ID  = os.environ["ONECLAW_VAULT_ID"]
+AGENT_ID  = os.environ["ONECLAW_AGENT_ID"]
+API_KEY   = os.environ["ONECLAW_API_KEY"]
 API_BASE  = "https://api.1claw.xyz/v1"
 
 # ── Chain config ───────────────────────────────────────────────────────────────
@@ -46,13 +60,24 @@ CHAINS = {
         "usdc_decimals": 6,
         "poa": False,
     },
+    "arbitrum": {
+        "chain_id": 42161,
+        "rpc": "https://arbitrum.publicnode.com",
+        "router": "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",  # SwapRouter02
+        "usdc":   "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+        "weth":   "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+        "usdc_decimals": 6,
+        "poa": False,
+    },
 }
 
 # ── Token registry ─────────────────────────────────────────────────────────────
 TOKENS = {
-    "RED":  {"chain": "base",     "address": "0x2e662015a501f066e043d64d04f77ffe551a4b07", "decimals": 18},
-    "GRT":  {"chain": "ethereum", "address": "0xc944e90c64b2c07662a292be6244bdf05cda44a7", "decimals": 18},
-    "WBTC": {"chain": "ethereum", "address": "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599", "decimals": 8},
+    "RED":   {"chain": "base",     "address": "0x2e662015a501f066e043d64d04f77ffe551a4b07", "decimals": 18},
+    "GRT":   {"chain": "arbitrum", "address": "0x9623063377AD1B27544C965cCd7342f7EA7e88C7", "decimals": 18},
+    "WBTC":  {"chain": "base",     "address": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c", "decimals": 8},
+    "LINK":  {"chain": "base",     "address": "0x88Fb150BDc53A65fe94Dea0c9BA0a6dAf8C6e196", "decimals": 18},
+    "CLAWD": {"chain": "base",     "address": "0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07", "decimals": 18},
 }
 
 # tokenIn options (per chain) — these are the spending tokens
@@ -64,6 +89,10 @@ INPUTS = {
     "ethereum": {
         "WETH": ("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", 18),
         "USDC": ("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", 6),
+    },
+    "arbitrum": {
+        "WETH": ("0x82aF49447D8a07e3bd95BD0d56f35241523fBab1", 18),
+        "USDC": ("0xaf88d065e77c8cC2239327C5EDb3A432268e5831", 6),
     },
 }
 
@@ -118,6 +147,32 @@ ROUTER_ABI = [
     }
 ]
 
+# ── Across Protocol bridge (Base → Arbitrum) ──────────────────────────────────
+ACROSS_API          = "https://app.across.to/api"
+ACROSS_SPOKE_BASE   = "0x09aea4b2242abC8bb4BB78D537A67a245A7bEC64"  # SpokePool on Base
+ACROSS_BRIDGE_ABI   = [
+    {
+        "name": "depositV3",
+        "type": "function",
+        "inputs": [
+            {"name": "depositor",            "type": "address"},
+            {"name": "recipient",            "type": "address"},
+            {"name": "inputToken",           "type": "address"},
+            {"name": "outputToken",          "type": "address"},
+            {"name": "inputAmount",          "type": "uint256"},
+            {"name": "outputAmount",         "type": "uint256"},
+            {"name": "destinationChainId",   "type": "uint256"},
+            {"name": "exclusiveRelayer",     "type": "address"},
+            {"name": "quoteTimestamp",       "type": "uint32"},
+            {"name": "fillDeadline",         "type": "uint32"},
+            {"name": "exclusivityDeadline",  "type": "uint32"},
+            {"name": "message",              "type": "bytes"},
+        ],
+        "outputs": [],
+        "stateMutability": "payable",
+    }
+]
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def log(msg):
@@ -156,6 +211,69 @@ def connect(chain_name):
     if not w3.is_connected():
         fail(f"Cannot connect to {chain_name} RPC")
     return w3, cfg
+
+def bridge_weth_to_arbitrum(account, amount_wei):
+    """Bridge WETH from Base to Arbitrum via Across Protocol. Blocks until funds arrive (≤3 min)."""
+    weth_base = CHAINS["base"]["weth"]
+    weth_arb  = CHAINS["arbitrum"]["weth"]
+
+    # Get quote from Across
+    log(f"Fetching Across bridge quote for {amount_wei/1e18:.6f} WETH Base→Arbitrum...")
+    url = (f"{ACROSS_API}/suggested-fees"
+           f"?inputToken={weth_base}&outputToken={weth_arb}"
+           f"&originChainId=8453&destinationChainId=42161"
+           f"&amount={amount_wei}&recipient={account.address}")
+    resp = json.loads(urllib.request.urlopen(urllib.request.Request(url), timeout=15).read())
+
+    total_fee    = int(resp["totalRelayFee"]["total"])
+    output_amt   = amount_wei - total_fee
+    quote_ts     = int(resp["timestamp"])
+    fill_deadline = int(resp["fillDeadline"])
+    excl_deadline = int(resp.get("exclusivityDeadline", 0))
+    excl_relayer  = resp.get("exclusiveRelayer", "0x0000000000000000000000000000000000000000")
+    log(f"Bridge fee: {total_fee/1e18:.6f} WETH → receive ~{output_amt/1e18:.6f} WETH on Arbitrum")
+
+    w3_base, cfg_base = connect("base")
+    ensure_approval(w3_base, account, weth_base, ACROSS_SPOKE_BASE, amount_wei, cfg_base)
+
+    spoke = w3_base.eth.contract(address=Web3.to_checksum_address(ACROSS_SPOKE_BASE), abi=ACROSS_BRIDGE_ABI)
+    gas_price = w3_base.eth.gas_price
+    tx = spoke.functions.depositV3(
+        account.address,
+        account.address,
+        Web3.to_checksum_address(weth_base),
+        Web3.to_checksum_address(weth_arb),
+        amount_wei,
+        output_amt,
+        42161,
+        Web3.to_checksum_address(excl_relayer),
+        quote_ts,
+        fill_deadline,
+        excl_deadline,
+        b"",
+    ).build_transaction({
+        "chainId": 8453,
+        "from": account.address,
+        "value": 0,
+        "maxFeePerGas": gas_price * 2,
+        "maxPriorityFeePerGas": gas_price,
+    })
+    bridge_tx = send_tx(w3_base, account, tx)
+    log(f"Bridge deposit TX on Base: {bridge_tx} — waiting for WETH on Arbitrum...")
+
+    # Poll Arbitrum until WETH arrives (timeout 3 min)
+    w3_arb, _ = connect("arbitrum")
+    weth_arb_c = w3_arb.eth.contract(address=Web3.to_checksum_address(weth_arb), abi=ERC20_ABI)
+    deadline = time.time() + 180
+    while time.time() < deadline:
+        bal = weth_arb_c.functions.balanceOf(account.address).call()
+        if bal >= output_amt:
+            log(f"WETH arrived on Arbitrum: {bal/1e18:.6f}")
+            return
+        log(f"Waiting for bridge... Arbitrum WETH: {bal/1e18:.6f}")
+        time.sleep(15)
+    fail("Bridge timeout: WETH did not arrive on Arbitrum within 3 minutes")
+
 
 def send_tx(w3, account, tx):
     tx["nonce"] = w3.eth.get_transaction_count(account.address)
@@ -275,10 +393,36 @@ def cmd_swap(args):
     amount_in = int(float(args.amount) * (10 ** token_in_decimals))
     log(f"Swap: {args.amount} {symbol_in} → {symbol_out} on {chain}")
 
-    # Check tokenIn balance
+    # Check tokenIn balance — auto-wrap native ETH → WETH if needed
     tin_contract = w3.eth.contract(address=Web3.to_checksum_address(token_in_addr), abi=ERC20_ABI)
     balance = tin_contract.functions.balanceOf(account.address).call()
     log(f"{symbol_in} balance: {balance / 10**token_in_decimals:.6f}")
+    if balance < amount_in and symbol_in == "WETH":
+        eth_bal = w3.eth.get_balance(account.address)
+        keep_gas = int(0.003 * 1e18)  # reserve for gas
+        log(f"WETH token balance insufficient — native ETH: {eth_bal/1e18:.6f}, need {args.amount} WETH")
+        if eth_bal - keep_gas >= amount_in:
+            log(f"Auto-wrapping {amount_in/1e18:.6f} ETH → WETH...")
+            WETH_DEPOSIT_ABI = [{"name": "deposit", "type": "function", "inputs": [], "outputs": [], "stateMutability": "payable"}]
+            weth_c = w3.eth.contract(address=Web3.to_checksum_address(token_in_addr), abi=WETH_DEPOSIT_ABI)
+            wrap_tx = weth_c.functions.deposit().build_transaction({
+                "chainId": cfg["chain_id"],
+                "from": account.address,
+                "value": amount_in,
+                "maxFeePerGas": w3.eth.gas_price * 2,
+                "maxPriorityFeePerGas": w3.eth.gas_price,
+            })
+            send_tx(w3, account, wrap_tx)
+            balance = tin_contract.functions.balanceOf(account.address).call()
+            log(f"Wrapped — WETH balance now: {balance / 10**token_in_decimals:.6f}")
+        elif chain == "arbitrum":
+            # Bridge WETH from Base → Arbitrum via Across, then re-check balance
+            log("No WETH/ETH on Arbitrum — bridging from Base...")
+            bridge_weth_to_arbitrum(account, amount_in)
+            balance = tin_contract.functions.balanceOf(account.address).call()
+            log(f"Post-bridge WETH balance on Arbitrum: {balance / 10**token_in_decimals:.6f}")
+        else:
+            fail(f"Insufficient funds: {balance/10**token_in_decimals:.6f} WETH + {eth_bal/1e18:.6f} ETH (need {args.amount})")
     if balance < amount_in:
         fail(f"Insufficient {symbol_in}: have {balance / 10**token_in_decimals:.6f}, need {args.amount}")
 
