@@ -1,11 +1,12 @@
 #!/bin/bash
-# Clawdmatey Treasury Bot — Simplified
+# Clawdmatey Treasury Bot — Stability-First Strategy
 #
 # Flow:
 #   1. Check fees via `bankr fees <wallet>`
-#   2. If above threshold, claim via Bankr natural language
-#   3. Split into portfolio: 20% each RED/WBTC/CLAWD/YARR + 20% WETH reserve
-#   4. Send all tokens to clawd-matey.eth (public treasury)
+#   2. If above threshold, claim via Bankr (gets WETH + YARR)
+#   3. Sell all claimed YARR for WETH (reduce volatility exposure)
+#   4. Split total WETH: 25% each RED/WBTC/CLAWD + 25% WETH reserve
+#   5. Send tokens to clawd-matey.eth (public treasury)
 #
 # Usage: ./treasury-bot.sh [--dry-run]
 
@@ -20,11 +21,11 @@ MIN_THRESHOLD_USD=10
 # Public treasury wallet (clawd-matey.eth)
 TREASURY_WALLET="0xdb784e1Dce8b11CC45b5228E9Ae48B03bDeFD1D9"
 
-# Portfolio tokens (all Base native)
+# Portfolio tokens (all Base native) — NO YARR (we sell YARR fees for stability)
 RED_TOKEN="0x2e662015a501f066e043d64d04f77ffe551a4b07"
 WBTC_TOKEN="0x0555E30da8f98308EdB960aa94C0Db47230d2B9c"
 CLAWD_TOKEN="0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07"
-# WETH = 20% kept as reserve (no swap needed)
+# Split: 25% RED, 25% WBTC, 25% CLAWD, 25% WETH reserve
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="$(dirname "$SCRIPT_DIR")/logs"
@@ -95,16 +96,39 @@ else
 fi
 
 CLAIMED_USD=$(echo "$CLAIMED_WETH $ETH_PRICE" | awk '{printf "%.2f", $1 * $2}')
-log "Claimed: \$$CLAIMED_USD"
+log "Claimed WETH: \$$CLAIMED_USD"
 
-# ── Step 4: Calculate splits (20% each, 4 tokens + WETH reserve) ──────────────
-# 80% swapped to tokens, 20% kept as WETH
-SWAP_USD=$(echo "$CLAIMED_USD" | awk '{printf "%.2f", $1 * 0.8}')
-SPLIT_USD=$(echo "$CLAIMED_USD" | awk '{printf "%.2f", $1 / 5}')
-WETH_RESERVE=$(echo "$CLAIMED_USD" | awk '{printf "%.2f", $1 * 0.2}')
-log "Split: \$$SPLIT_USD each to RED, WBTC, CLAWD, YARR | \$$WETH_RESERVE WETH reserve"
+# ── Step 4: Sell claimed YARR for WETH (reduce volatility exposure) ───────────
+YARR_SOLD_WETH="0"
+if [ "$DRY_RUN" = "true" ]; then
+  log "[DRY RUN] Would sell claimed YARR for WETH"
+else
+  log "Selling claimed YARR for WETH..."
+  SELL_RESULT=$(bankr "Sell all my YARR ($YARR_TOKEN) on Base for WETH. Execute the swap and confirm the tx hash." 2>&1 || true)
+  
+  if echo "$SELL_RESULT" | grep -qiE "(tx|transaction|hash|success|sold|swapped|0x[a-f0-9]{64})"; then
+    log "✅ YARR sold for WETH"
+    # Try to extract WETH amount received (rough parse)
+    YARR_SOLD_WETH=$(echo "$SELL_RESULT" | grep -oiE "[0-9]+\.[0-9]+ weth" | head -1 | grep -oE "[0-9]+\.[0-9]+" || echo "0")
+    log "YARR sale added ~$YARR_SOLD_WETH WETH"
+  else
+    log "⚠️ YARR sale may have failed (continuing with WETH only): $(echo "$SELL_RESULT" | tail -3)"
+  fi
+fi
 
-# ── Step 5: Buy portfolio tokens (sequential, wait for each) ─────────────────
+# Calculate total WETH (claimed + YARR sale proceeds)
+TOTAL_WETH=$(echo "$CLAIMED_WETH $YARR_SOLD_WETH" | awk '{printf "%.6f", $1 + $2}')
+TOTAL_USD=$(echo "$TOTAL_WETH $ETH_PRICE" | awk '{printf "%.2f", $1 * $2}')
+log "Total WETH after YARR sale: $TOTAL_WETH (~\$$TOTAL_USD)"
+
+# ── Step 5: Calculate splits (25% each: RED, WBTC, CLAWD, WETH reserve) ───────
+# 75% swapped to tokens, 25% kept as WETH
+SWAP_USD=$(echo "$TOTAL_USD" | awk '{printf "%.2f", $1 * 0.75}')
+SPLIT_USD=$(echo "$TOTAL_USD" | awk '{printf "%.2f", $1 / 4}')
+WETH_RESERVE=$(echo "$TOTAL_USD" | awk '{printf "%.2f", $1 * 0.25}')
+log "Split: \$$SPLIT_USD each to RED, WBTC, CLAWD | \$$WETH_RESERVE WETH reserve"
+
+# ── Step 6: Buy portfolio tokens (sequential, wait for each) ─────────────────
 buy_token() {
   local TOKEN_NAME=$1
   local TOKEN_ADDR=$2
@@ -125,7 +149,7 @@ buy_token() {
 }
 
 if [ "$DRY_RUN" = "true" ]; then
-  log "[DRY RUN] Would buy \$$SPLIT_USD each of RED, WBTC, CLAWD, YARR"
+  log "[DRY RUN] Would buy \$$SPLIT_USD each of RED, WBTC, CLAWD"
   log "[DRY RUN] Would keep \$$WETH_RESERVE as WETH reserve"
 else
   log "Buying tokens sequentially (waiting for each to complete)..."
@@ -151,17 +175,10 @@ else
     FAILED=$((FAILED + 1))
   fi
   
-  # Buy YARR
-  if buy_token "YARR" "$YARR_TOKEN" "$SPLIT_USD"; then
-    BOUGHT=$((BOUGHT + 1))
-  else
-    FAILED=$((FAILED + 1))
-  fi
-  
-  log "Buy summary: $BOUGHT/4 succeeded, $FAILED failed"
+  log "Buy summary: $BOUGHT/3 succeeded, $FAILED failed"
 fi
 
-# ── Step 6: Transfer tokens to public treasury (clawd-matey.eth) ──────────────
+# ── Step 7: Transfer tokens to public treasury (clawd-matey.eth) ──────────────
 transfer_token() {
   local TOKEN_NAME=$1
   local TOKEN_ADDR=$2
@@ -186,16 +203,16 @@ else
   transfer_token "RED" "$RED_TOKEN" && TRANSFERRED=$((TRANSFERRED + 1))
   transfer_token "WBTC" "$WBTC_TOKEN" && TRANSFERRED=$((TRANSFERRED + 1))
   transfer_token "CLAWD" "$CLAWD_TOKEN" && TRANSFERRED=$((TRANSFERRED + 1))
-  transfer_token "YARR" "$YARR_TOKEN" && TRANSFERRED=$((TRANSFERRED + 1))
   
-  log "Transfer summary: $TRANSFERRED/4 tokens sent to treasury"
+  log "Transfer summary: $TRANSFERRED/3 tokens sent to treasury"
 fi
 
 log "═══ TREASURY BOT COMPLETE ═══"
-log "Claimed: \$$CLAIMED_USD | Swapped: \$$SWAP_USD | WETH Reserve: \$$WETH_RESERVE"
-log "Tokens sent to clawd-matey.eth"
+log "Claimed: $CLAIMED_WETH WETH + sold YARR for ~$YARR_SOLD_WETH WETH"
+log "Total: \$$TOTAL_USD | Swapped: \$$SWAP_USD | WETH Reserve: \$$WETH_RESERVE"
+log "Tokens (RED, WBTC, CLAWD) sent to clawd-matey.eth"
 
-# ── Step 7: Update TRANSACTIONS.md and push to GitHub ─────────────────────────
+# ── Step 8: Update TRANSACTIONS.md and push to GitHub ─────────────────────────
 if [ "$DRY_RUN" = "false" ]; then
   REPO_DIR="$(dirname "$SCRIPT_DIR")"
   TX_LOG="$REPO_DIR/TRANSACTIONS.md"
@@ -206,19 +223,19 @@ if [ "$DRY_RUN" = "false" ]; then
   CLAIM_TX=$(echo "$CLAIM_RESULT" | grep -oE "0x[a-f0-9]{64}" | head -1 || echo "unknown")
   
   # Build status string
-  if [ "$BOUGHT" -eq 4 ] && [ "$TRANSFERRED" -eq 4 ]; then
+  if [ "$BOUGHT" -eq 3 ] && [ "$TRANSFERRED" -eq 3 ]; then
     STATUS="✅ Full success"
   elif [ "$BOUGHT" -gt 0 ]; then
-    STATUS="✅ Claim + $BOUGHT/4 buys, $TRANSFERRED/4 transfers"
+    STATUS="✅ Claim + $BOUGHT/3 buys, $TRANSFERRED/3 transfers"
   else
     STATUS="✅ Claim only, buys failed"
   fi
   
   # Create entry
   ENTRY="### Run: $TIME
-**Claimed:** $CLAIMED_WETH WETH (~\$$CLAIMED_USD)  
-**Claim Tx:** [${CLAIM_TX:0:9}...](https://basescan.org/tx/$CLAIM_TX)  
-**Buys:** $BOUGHT/4 | **Transfers:** $TRANSFERRED/4  
+**Claimed:** $CLAIMED_WETH WETH + YARR → sold for ~$YARR_SOLD_WETH WETH  
+**Total:** ~\$$TOTAL_USD | **Claim Tx:** [${CLAIM_TX:0:9}...](https://basescan.org/tx/$CLAIM_TX)  
+**Buys:** $BOUGHT/3 (RED, WBTC, CLAWD) | **Transfers:** $TRANSFERRED/3  
 **Status:** $STATUS
 
 "
