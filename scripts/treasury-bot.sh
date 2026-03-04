@@ -331,16 +331,36 @@ STATS=$(update_stats)
 echo "$STATS" > "$STATS_FILE"
 
 # Get cumulative totals for tweet
-DAY_YARR=$(echo "$STATS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('daily',{}).get('$TODAY',{}).get('yarr',0))")
-DAY_USD=$(echo "$STATS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f\"{d.get('daily',{}).get('$TODAY',{}).get('usd',0):.2f}\")")
-WEEK_YARR=$(echo "$STATS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('weekly',{}).get('$THIS_WEEK',{}).get('yarr',0))")
-MONTH_YARR=$(echo "$STATS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('monthly',{}).get('$THIS_MONTH',{}).get('yarr',0))")
+get_stat() {
+  local PERIOD=$1
+  local KEY=$2
+  local FIELD=$3
+  echo "$STATS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('$PERIOD',{}).get('$KEY',{}).get('$FIELD',0))"
+}
+
+DAY_YARR=$(get_stat daily "$TODAY" yarr)
+DAY_WETH=$(get_stat daily "$TODAY" weth)
+DAY_USD=$(get_stat daily "$TODAY" usd)
+WEEK_YARR=$(get_stat weekly "$THIS_WEEK" yarr)
+WEEK_WETH=$(get_stat weekly "$THIS_WEEK" weth)
+WEEK_USD=$(get_stat weekly "$THIS_WEEK" usd)
+MONTH_YARR=$(get_stat monthly "$THIS_MONTH" yarr)
+MONTH_WETH=$(get_stat monthly "$THIS_MONTH" weth)
+MONTH_USD=$(get_stat monthly "$THIS_MONTH" usd)
 
 # Format numbers nicely
-fmt_yarr() { python3 -c "v=$1; print(f'{v/1e6:.1f}M' if v>=1e6 else f'{v/1e3:.1f}K' if v>=1e3 else f'{v:.0f}')"; }
-DAY_YARR_FMT=$(fmt_yarr $DAY_YARR)
-WEEK_YARR_FMT=$(fmt_yarr $WEEK_YARR)
-MONTH_YARR_FMT=$(fmt_yarr $MONTH_YARR)
+fmt_num() { python3 -c "v=$1; print(f'{v/1e6:.1f}M' if v>=1e6 else f'{v/1e3:.1f}K' if v>=1e3 else f'{v:.2f}' if v<100 else f'{v:.0f}')"; }
+fmt_weth() { python3 -c "v=$1; print(f'{v:.4f}')"; }
+
+DAY_YARR_FMT=$(fmt_num $DAY_YARR)
+DAY_WETH_FMT=$(fmt_weth $DAY_WETH)
+DAY_USD_FMT=$(python3 -c "print(f'{$DAY_USD:.2f}')")
+WEEK_YARR_FMT=$(fmt_num $WEEK_YARR)
+WEEK_WETH_FMT=$(fmt_weth $WEEK_WETH)
+WEEK_USD_FMT=$(python3 -c "print(f'{$WEEK_USD:.2f}')")
+MONTH_YARR_FMT=$(fmt_num $MONTH_YARR)
+MONTH_WETH_FMT=$(fmt_weth $MONTH_WETH)
+MONTH_USD_FMT=$(python3 -c "print(f'{$MONTH_USD:.2f}')")
 
 # ── Tweet update ──────────────────────────────────────────────────────────────
 if [ "$DRY_RUN" = "false" ]; then
@@ -360,8 +380,9 @@ Claimed: ${YARR_MILLIONS} \$YARR"
   
   TWEET="$TWEET
 
-📊 Today: ${DAY_YARR_FMT} YARR (~\$${DAY_USD})
-📈 This week: ${WEEK_YARR_FMT} | Month: ${MONTH_YARR_FMT}"
+📊 Today: ${DAY_YARR_FMT} YARR + ${DAY_WETH_FMT} WETH (~\$${DAY_USD_FMT})
+📈 Week: ${WEEK_YARR_FMT} YARR + ${WEEK_WETH_FMT} WETH
+📅 Month: ${MONTH_YARR_FMT} YARR + ${MONTH_WETH_FMT} WETH"
   
   log "Tweeting update..."
   TWEET_RESULT=$(bird tweet "$TWEET" 2>&1 || true)
