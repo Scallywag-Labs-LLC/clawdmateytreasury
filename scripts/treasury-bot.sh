@@ -366,7 +366,9 @@ MONTH_USD_FMT=$(python3 -c "print(f'{$MONTH_USD:.2f}')")
 if [ "$DRY_RUN" = "false" ]; then
   YARR_MILLIONS=$(echo "$CLAIMABLE_YARR" | awk '{printf "%.1fM", $1/1000000}')
   
-  TWEET="🤖 [auto] Treasury update
+  TWEET_TIME=$(TZ="America/New_York" date +"%I:%M %p EST")
+  
+  TWEET="🤖 [auto] Treasury update — ${TWEET_TIME}
 
 Claimed: ${YARR_MILLIONS} \$YARR"
   
