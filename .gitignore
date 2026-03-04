@@ -1,33 +1,67 @@
-# Secrets and credentials — never commit these
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECURITY: Never commit secrets, keys, or credentials
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Environment files (contain API keys, private keys, secrets)
 .env
 .env.*
+*.env
+env/
+.envrc
+
+# Secret files
 secrets.json
+secrets/
 **/secrets/**
 *.key
 *.pem
 *.p12
+*.pfx
 **/private/**
+private-key*
+seed-phrase*
+mnemonic*
 
-# Bankr API key (lives in ~/.clawdbot, not here — but just in case)
+# Wallet files
+*.keystore
+keystore/
+wallet.json
+
+# API/Auth config (may contain tokens)
 bankr-config.json
-
-# xurl credentials
-~/.xurl
-
-# OpenClaw config (has API keys)
 openclaw.json
 gateway.yml
 auth-profiles.json
+credentials.json
+*.credentials
 
-# Logs (can contain tx hashes / amounts)
+# xurl/Twitter auth
+.xurl/
+xurl-auth*
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Logs (can contain transaction details, amounts, addresses)
+# ═══════════════════════════════════════════════════════════════════════════════
 logs/
+*.log
 
-# macOS
+# ═══════════════════════════════════════════════════════════════════════════════
+# OS and Editor
+# ═══════════════════════════════════════════════════════════════════════════════
 .DS_Store
-.Spotlight-V7
+.Spotlight-V100
 .Trashes
-
-# Editor
+Thumbs.db
 .vscode/
+.idea/
 *.swp
 *~
+*.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+.venv/

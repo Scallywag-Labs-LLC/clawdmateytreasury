@@ -24,14 +24,17 @@ from eth_account import Account
 
 # ── 1claw config (loaded from environment or ~/.openclaw/redbotster.env) ──────
 def _load_env_file():
-    env_file = os.path.expanduser("~/.openclaw/redbotster.env")
-    if os.path.exists(env_file):
-        with open(env_file) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    k, v = line.split("=", 1)
-                    os.environ.setdefault(k.strip(), v.strip())
+    # Try clawdmatey first, fall back to redbotster for compatibility
+    for env_name in ["clawdmatey.env", "redbotster.env"]:
+        env_file = os.path.expanduser(f"~/.openclaw/{env_name}")
+        if os.path.exists(env_file):
+            with open(env_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        os.environ.setdefault(k.strip(), v.strip())
+            break
 
 _load_env_file()
 
@@ -97,7 +100,7 @@ INPUTS = {
 }
 
 BURN_ADDRESS       = "0x000000000000000000000000000000000000dEaD"
-RED_BURN_THRESHOLD = 0.05   # only burn if wallet holds > 5% of total supply
+BURN_THRESHOLD     = 0.05   # only burn if wallet holds > 5% of total supply (applies to YARR and RED)
 
 # ── Clanker pool config (RED trades on a custom Clanker AMM, not Uniswap v3) ──
 # RED uses the Clanker pool router at 0x21e99B… which routes through Uniswap v4 internally.
@@ -344,14 +347,21 @@ def clanker_buy_red(w3, account, eth_amount_wei):
     return send_tx(w3, account, tx)
 
 
-def red_burn_eligible(w3, wallet_addr):
-    """Returns (balance, total_supply, pct, eligible) for RED."""
-    red_addr = Web3.to_checksum_address(TOKENS["RED"]["address"])
-    red_c = w3.eth.contract(address=red_addr, abi=ERC20_ABI)
-    balance = red_c.functions.balanceOf(Web3.to_checksum_address(wallet_addr)).call()
-    total   = red_c.functions.totalSupply().call()
+def token_burn_eligible(w3, wallet_addr, token_symbol="YARR"):
+    """Returns (balance, total_supply, pct, eligible) for a token."""
+    if token_symbol not in TOKENS:
+        return 0, 0, 0, False
+    tok = TOKENS[token_symbol]
+    token_addr = Web3.to_checksum_address(tok["address"])
+    token_c = w3.eth.contract(address=token_addr, abi=ERC20_ABI)
+    balance = token_c.functions.balanceOf(Web3.to_checksum_address(wallet_addr)).call()
+    total   = token_c.functions.totalSupply().call()
     pct = balance / total if total > 0 else 0
-    return balance, total, pct, pct >= RED_BURN_THRESHOLD
+    return balance, total, pct, pct >= BURN_THRESHOLD
+
+# Backwards compatibility alias
+def red_burn_eligible(w3, wallet_addr):
+    return token_burn_eligible(w3, wallet_addr, "RED")
 
 # ── Commands ───────────────────────────────────────────────────────────────────
 
@@ -566,18 +576,22 @@ def cmd_balance(args):
 
 
 def cmd_check_burn(args):
-    log(f"Checking RED burn eligibility...")
+    token_symbol = getattr(args, 'token', 'YARR').upper()
+    if token_symbol not in TOKENS:
+        fail(f"Unknown token: {token_symbol}. Supported: {', '.join(TOKENS)}")
+    
+    log(f"Checking {token_symbol} burn eligibility...")
     pk      = get_private_key()
     account = Account.from_key(pk)
     w3, _   = connect("base")
-    bal, total, pct, eligible = red_burn_eligible(w3, account.address)
-    dec = TOKENS["RED"]["decimals"]
+    bal, total, pct, eligible = token_burn_eligible(w3, account.address, token_symbol)
+    dec = TOKENS[token_symbol]["decimals"]
     msg = (
-        f"RED balance: {bal/10**dec:,.0f} ({pct*100:.4f}% of supply). "
+        f"{token_symbol} balance: {bal/10**dec:,.0f} ({pct*100:.4f}% of supply). "
         f"Burn threshold: 5%. "
         f"{'ELIGIBLE to burn.' if eligible else 'NOT eligible — accumulating.'}"
     )
-    out("completed", msg, data={"eligible": eligible, "pct": pct * 100, "balance": bal / 10**dec})
+    out("completed", msg, data={"eligible": eligible, "pct": pct * 100, "balance": bal / 10**dec, "token": token_symbol})
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
@@ -599,7 +613,8 @@ def main():
     p_bal = sub.add_parser("balance", help="Check token balance")
     p_bal.add_argument("--token", default="ALL")
 
-    sub.add_parser("check-burn", help="Check if RED burn threshold met")
+    p_burn = sub.add_parser("check-burn", help="Check if token burn threshold met")
+    p_burn.add_argument("--token", default="YARR", help="Token to check: YARR, RED (default: YARR)")
 
     args = parser.parse_args()
     if args.command == "swap":
