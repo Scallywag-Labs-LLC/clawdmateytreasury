@@ -13,7 +13,7 @@
   "wbtcTokenBase": "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
   "clawdTokenBase": "0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07",
   "burnAddress": "0x000000000000000000000000000000000000dEaD",
-  "treasuryWallet": "",
+  "treasuryWallet": "0xdb784e1Dce8b11CC45b5228E9Ae48B03bDeFD1D9",
   "blockedContracts": [
     "0xca586c77e4753b343c76e50150abc4d410f6b011"
   ],

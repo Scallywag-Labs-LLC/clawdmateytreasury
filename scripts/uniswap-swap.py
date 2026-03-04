@@ -38,9 +38,14 @@ def _load_env_file():
 
 _load_env_file()
 
-VAULT_ID  = os.environ["ONECLAW_VAULT_ID"]
-AGENT_ID  = os.environ["ONECLAW_AGENT_ID"]
-API_KEY   = os.environ["ONECLAW_API_KEY"]
+# Wallet mode: "local" reads from WALLET_ENV_PATH, "vault" uses 1claw API
+WALLET_MODE = os.environ.get("WALLET_MODE", "vault")
+WALLET_ENV_PATH = os.environ.get("WALLET_ENV_PATH", "")
+
+# 1claw vault credentials (only needed if WALLET_MODE=vault)
+VAULT_ID  = os.environ.get("ONECLAW_VAULT_ID", "")
+AGENT_ID  = os.environ.get("ONECLAW_AGENT_ID", "")
+API_KEY   = os.environ.get("ONECLAW_API_KEY", "")
 API_BASE  = "https://api.1claw.xyz/v1"
 
 # ── Chain config ───────────────────────────────────────────────────────────────
@@ -201,6 +206,34 @@ def oneclaw_token():
     return json.loads(urllib.request.urlopen(req).read())["access_token"]
 
 def get_private_key():
+    """Get private key from local env file or 1claw vault."""
+    if WALLET_MODE == "local":
+        # Load from local .env file (mnemonic-based wallet)
+        if not WALLET_ENV_PATH or not os.path.exists(WALLET_ENV_PATH):
+            raise RuntimeError(f"WALLET_ENV_PATH not found: {WALLET_ENV_PATH}")
+        
+        env_vars = {}
+        with open(WALLET_ENV_PATH) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    env_vars[k.strip()] = v.strip()
+        
+        # Check for direct private key first
+        if "PRIVATE_KEY" in env_vars:
+            return env_vars["PRIVATE_KEY"]
+        
+        # Otherwise derive from mnemonic
+        if "MNEMONIC" in env_vars:
+            from eth_account import Account
+            Account.enable_unaudited_hdwallet_features()
+            acct = Account.from_mnemonic(env_vars["MNEMONIC"])
+            return acct.key.hex()
+        
+        raise RuntimeError("No PRIVATE_KEY or MNEMONIC found in wallet env file")
+    
+    # Vault mode: fetch from 1claw API
     token = oneclaw_token()
     url = f"{API_BASE}/vaults/{VAULT_ID}/secrets/punkwallet/private-key"
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
