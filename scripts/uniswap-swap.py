@@ -331,7 +331,7 @@ def send_tx(w3, account, tx, retries=None):
             signed = account.sign_transaction(tx)
             tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
             log(f"TX sent: {tx_hash.hex()} — waiting...")
-            receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+            receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=60)
             if receipt["status"] != 1:
                 raise Exception(f"TX reverted: {tx_hash.hex()}")
             log(f"TX confirmed in block {receipt['blockNumber']}")
@@ -645,7 +645,9 @@ def cmd_transfer(args):
         amount = int(float(args.amount) * 10**decimals)
 
     if amount == 0:
-        fail(f"Zero balance for {symbol_str}")
+        log(f"Zero balance for {symbol_str} — nothing to transfer")
+        out("completed", f"No {symbol_str} to transfer (balance is 0)", data={"skipped": True})
+        return
 
     gas_price = w3.eth.gas_price
     tx = token.functions.transfer(to_addr, amount).build_transaction({
