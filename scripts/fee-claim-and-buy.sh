@@ -20,7 +20,7 @@ CONFIG_FILE="$PROJECT_DIR/config.json"
 LOG_DIR="$PROJECT_DIR/logs"
 TRACKER="$HOME/Clawdmatey.md"
 
-BANKR="$HOME/.openclaw/workspace/skills/bankr/scripts/bankr.sh"
+BANKR="/opt/homebrew/bin/bankr"
 SWAP_SCRIPT="$SCRIPT_DIR/uniswap-swap.py"
 
 # Primary token: YARR (fees come from this)
@@ -293,7 +293,7 @@ V3_USD=""
 
 if [ -f "$CHECK_ALL_SCRIPT" ]; then
   log "Running unified fee check (v4 + v3)..."
-  CHECK_RESULT=$(cd "$PROJECT_DIR" && source venv/bin/activate 2>/dev/null && python3 "$CHECK_ALL_SCRIPT" 2>>"$LOGFILE") || true
+  CHECK_RESULT=$(cd "$PROJECT_DIR" && python3 "$CHECK_ALL_SCRIPT" 2>>"$LOGFILE") || true
   
   # Parse JSON output
   AVAILABLE_USD=$(echo "$CHECK_RESULT" | jq -r '.total_usd // 0' 2>/dev/null || echo "0")
@@ -354,9 +354,9 @@ CREATOR_WALLET=$(jq -r '.creatorWallet // "0x8b59a7e24386d2265e9dfd6de59b4a6bbd5
 if [ -n "$V4_USD" ] && [ "$(echo "$V4_USD" | awk '{print ($1 > 0) ? "yes" : "no"}')" = "yes" ]; then
   log "Claiming v4 fees (\$$V4_USD) via ClankerFeeLocker..."
   if [ "$DRY_RUN" = "true" ]; then
-    CLAIM_RESULT=$(cd "$PROJECT_DIR" && source venv/bin/activate 2>/dev/null && python3 "$CLANKER_FEES_SCRIPT" claim --fee-owner "$CREATOR_WALLET" --token YARR --dry-run 2>>"$LOGFILE") || true
+    CLAIM_RESULT=$(cd "$PROJECT_DIR" && python3 "$CLANKER_FEES_SCRIPT" claim --fee-owner "$CREATOR_WALLET" --token YARR --dry-run 2>>"$LOGFILE") || true
   else
-    CLAIM_RESULT=$(cd "$PROJECT_DIR" && source venv/bin/activate 2>/dev/null && python3 "$CLANKER_FEES_SCRIPT" claim --fee-owner "$CREATOR_WALLET" --token YARR 2>>"$LOGFILE") || true
+    CLAIM_RESULT=$(cd "$PROJECT_DIR" && python3 "$CLANKER_FEES_SCRIPT" claim --fee-owner "$CREATOR_WALLET" --token YARR 2>>"$LOGFILE") || true
   fi
   V4_CLAIMED=$(echo "$CLAIM_RESULT" | jq -r '.data.total_usd // 0' 2>/dev/null || echo "0")
   log "v4 claimed: \$$V4_CLAIMED"
