@@ -15,7 +15,7 @@
 | **WETH** | 20% | 80% → diversified (RED/WBTC/CLAWD/reserve) |
 
 ### 20% Development Cost
-The 20% creator allocation funds all Scallywag LLC development — including infrastructure, tooling, and future projects in the ecosystem. This ensures sustainable, long-term building without relying on external funding or token dumps.
+The 20% creator allocation funds go to Scallywag LLC development.
 
 ### Burn Mechanism  
 - If treasury holds **>5% of YARR supply** → excess is burned
