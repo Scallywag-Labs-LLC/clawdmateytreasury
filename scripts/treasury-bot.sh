@@ -9,7 +9,8 @@
 #
 # Usage: ./treasury-bot.sh [--dry-run]
 
-set -euo pipefail
+set -uo pipefail
+# Note: removed -e to allow individual command failures without exiting
 
 # ── Config ────────────────────────────────────────────────────────────────────
 CREATOR_WALLET="0x8b59a7e24386d2265e9dfd6de59b4a6bbd5d1633"
@@ -98,31 +99,96 @@ SPLIT_USD=$(echo "$CLAIMED_USD" | awk '{printf "%.2f", $1 / 5}')
 WETH_RESERVE=$(echo "$CLAIMED_USD" | awk '{printf "%.2f", $1 * 0.2}')
 log "Split: \$$SPLIT_USD each to RED, WBTC, CLAWD, YARR | \$$WETH_RESERVE WETH reserve"
 
-# ── Step 5: Buy portfolio tokens (batched single call) ───────────────────────
+# ── Step 5: Buy portfolio tokens (sequential, wait for each) ─────────────────
+buy_token() {
+  local TOKEN_NAME=$1
+  local TOKEN_ADDR=$2
+  local AMOUNT_USD=$3
+  
+  log "Buying \$$AMOUNT_USD of $TOKEN_NAME..."
+  local RESULT=$(bankr "Buy \$$AMOUNT_USD worth of $TOKEN_NAME ($TOKEN_ADDR) on Base using WETH. Execute the swap and confirm the tx hash." 2>&1 || true)
+  
+  # Check for success indicators
+  if echo "$RESULT" | grep -qiE "(tx|transaction|hash|success|bought|swapped|0x[a-f0-9]{64})"; then
+    log "✅ $TOKEN_NAME buy completed"
+    echo "$RESULT" | grep -oE "0x[a-f0-9]{64}" | head -1
+    return 0
+  else
+    log "⚠️ $TOKEN_NAME buy may have failed: $(echo "$RESULT" | tail -3)"
+    return 1
+  fi
+}
+
 if [ "$DRY_RUN" = "true" ]; then
   log "[DRY RUN] Would buy \$$SPLIT_USD each of RED, WBTC, CLAWD, YARR"
   log "[DRY RUN] Would keep \$$WETH_RESERVE as WETH reserve"
 else
-  log "Buying 4 tokens in single batch (keeping 20% WETH)..."
-  BUY_RESULT=$(bankr "Execute these 4 buys using WETH on Base. Keep 20% of WETH as reserve (don't swap it).
-
-Swap 80% of available WETH into:
-1. Buy \$$SPLIT_USD of RED ($RED_TOKEN) on Base
-2. Buy \$$SPLIT_USD of WBTC ($WBTC_TOKEN) on Base  
-3. Buy \$$SPLIT_USD of CLAWD ($CLAWD_TOKEN) on Base
-4. Buy \$$SPLIT_USD of YARR ($YARR_TOKEN) on Base
-
-Execute all 4 transactions. Use Clanker pools where available. Report results." 2>&1 || true)
-  log "Batch buy result: $(echo "$BUY_RESULT" | tail -10)"
+  log "Buying tokens sequentially (waiting for each to complete)..."
+  
+  BOUGHT=0
+  FAILED=0
+  
+  # Buy RED
+  if buy_token "RED" "$RED_TOKEN" "$SPLIT_USD"; then
+    BOUGHT=$((BOUGHT + 1))
+  else
+    FAILED=$((FAILED + 1))
+  fi
+  
+  # Buy WBTC  
+  if buy_token "WBTC" "$WBTC_TOKEN" "$SPLIT_USD"; then
+    BOUGHT=$((BOUGHT + 1))
+  else
+    FAILED=$((FAILED + 1))
+  fi
+  
+  # Buy CLAWD
+  if buy_token "CLAWD" "$CLAWD_TOKEN" "$SPLIT_USD"; then
+    BOUGHT=$((BOUGHT + 1))
+  else
+    FAILED=$((FAILED + 1))
+  fi
+  
+  # Buy YARR
+  if buy_token "YARR" "$YARR_TOKEN" "$SPLIT_USD"; then
+    BOUGHT=$((BOUGHT + 1))
+  else
+    FAILED=$((FAILED + 1))
+  fi
+  
+  log "Buy summary: $BOUGHT/4 succeeded, $FAILED failed"
 fi
 
 # ── Step 6: Transfer tokens to public treasury (clawd-matey.eth) ──────────────
+transfer_token() {
+  local TOKEN_NAME=$1
+  local TOKEN_ADDR=$2
+  
+  log "Transferring $TOKEN_NAME to treasury..."
+  local RESULT=$(bankr "Send all my $TOKEN_NAME ($TOKEN_ADDR) on Base to $TREASURY_WALLET. Execute the transfer." 2>&1 || true)
+  
+  if echo "$RESULT" | grep -qiE "(tx|transaction|hash|success|sent|transfer|0x[a-f0-9]{64})"; then
+    log "✅ $TOKEN_NAME transfer completed"
+    return 0
+  else
+    log "⚠️ $TOKEN_NAME transfer may have failed: $(echo "$RESULT" | tail -3)"
+    return 1
+  fi
+}
+
 if [ "$DRY_RUN" = "true" ]; then
   log "[DRY RUN] Would transfer all tokens to clawd-matey.eth ($TREASURY_WALLET)"
 else
-  log "Transferring tokens to public treasury (clawd-matey.eth)..."
-  TRANSFER_RESULT=$(bankr "Send all my RED, WBTC, CLAWD, and YARR tokens on Base to $TREASURY_WALLET (clawd-matey.eth). Keep WETH for gas. Execute all transfers." 2>&1 || true)
-  log "Transfer result: $(echo "$TRANSFER_RESULT" | tail -10)"
+  log "Transferring tokens to public treasury sequentially..."
+  
+  TRANSFERRED=0
+  
+  transfer_token "RED" "$RED_TOKEN" && TRANSFERRED=$((TRANSFERRED + 1))
+  transfer_token "WBTC" "$WBTC_TOKEN" && TRANSFERRED=$((TRANSFERRED + 1))
+  transfer_token "CLAWD" "$CLAWD_TOKEN" && TRANSFERRED=$((TRANSFERRED + 1))
+  transfer_token "YARR" "$YARR_TOKEN" && TRANSFERRED=$((TRANSFERRED + 1))
+  
+  log "Transfer summary: $TRANSFERRED/4 tokens sent to treasury"
 fi
 
 log "═══ TREASURY BOT COMPLETE ═══"
