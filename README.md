@@ -6,12 +6,13 @@
 
 ---
 
-## 💰 Tokenomics & Buyback
+## 💰 Tokenomics & Fee Distribution
 
-### Buyback Mechanism
-- **20% of all claimed fees** are used to buy YARR on the open market
-- Creates constant buy pressure from trading activity
-- Purchased YARR held in treasury
+### Fee Split
+| Asset | Creator | Treasury/Diversify |
+|-------|---------|-------------------|
+| **YARR** | 20% | 80% → treasury |
+| **WETH** | 20% | 80% → diversified (RED/WBTC/CLAWD/reserve) |
 
 ### Burn Mechanism  
 - If treasury holds **>5% of YARR supply** → excess is burned
@@ -25,8 +26,8 @@
 
 ### Net Effect
 ```
-Trading Activity → Fees → Auto-Claim → 20% Buyback → Hold/Burn
-                                     → 80% Diversify → Treasury Growth
+Trading Activity → Fees → Auto-Claim → 20% Creator
+                                     → 80% Treasury + Diversify + Burns
 ```
 
 ---
@@ -43,13 +44,16 @@ Every hour:
 
 ## Portfolio Allocation
 
-| Token | Chain | Split | Why |
-|-------|-------|-------|-----|
-| **RED** | Base | 20% | AI agent ecosystem token |
-| **WBTC** | Base | 20% | Bitcoin exposure, store of value |
-| **CLAWD** | Base | 20% | AI agent ecosystem |
-| **YARR** | Base | 20% | Buyback — own token |
-| **WETH** | Base | 20% | Liquid reserve |
+**Of the 80% WETH going to treasury:**
+
+| Token | Split | Why |
+|-------|-------|-----|
+| **RED** | 25% | AI agent ecosystem token |
+| **WBTC** | 25% | Bitcoin exposure, store of value |
+| **CLAWD** | 25% | AI agent ecosystem |
+| **WETH** | 25% | Liquid reserve |
+
+**YARR:** 80% of claimed YARR → treasury (burns if >5% supply)
 
 All tokens are Base-native — no cross-chain bridging required.
 
