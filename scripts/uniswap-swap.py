@@ -218,20 +218,22 @@ def get_private_key():
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
                     k, v = line.split("=", 1)
-                    env_vars[k.strip()] = v.strip()
+                    # Strip quotes from values
+                    env_vars[k.strip()] = v.strip().strip('"').strip("'")
         
         # Check for direct private key first
         if "PRIVATE_KEY" in env_vars:
             return env_vars["PRIVATE_KEY"]
         
-        # Otherwise derive from mnemonic
-        if "MNEMONIC" in env_vars:
+        # Otherwise derive from mnemonic (check common key names)
+        mnemonic = env_vars.get("MNEMONIC") or env_vars.get("WALLET_MNEMONIC") or env_vars.get("SEED_PHRASE")
+        if mnemonic:
             from eth_account import Account
             Account.enable_unaudited_hdwallet_features()
-            acct = Account.from_mnemonic(env_vars["MNEMONIC"])
+            acct = Account.from_mnemonic(mnemonic)
             return acct.key.hex()
         
-        raise RuntimeError("No PRIVATE_KEY or MNEMONIC found in wallet env file")
+        raise RuntimeError("No PRIVATE_KEY or MNEMONIC/WALLET_MNEMONIC found in wallet env file")
     
     # Vault mode: fetch from 1claw API
     token = oneclaw_token()
