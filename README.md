@@ -4,6 +4,44 @@
 
 **Clawdmatey** is an AI-powered DeFi treasury bot that claims Clanker creator fees for $YARR on Base and automatically reinvests them into a diversified on-chain portfolio — fully automated.
 
+---
+
+## 💰 Tokenomics & Buyback
+
+### Buyback Mechanism
+- **20% of all claimed fees** are used to buy YARR on the open market
+- Creates constant buy pressure from trading activity
+- Purchased YARR held in treasury
+
+### Burn Mechanism  
+- If treasury holds **>5% of YARR supply** → excess is burned
+- Deflationary pressure when treasury grows
+- Prevents treasury from becoming a whale
+
+### Fee Source
+- **57% creator share** of all YARR trading fees (Clanker v3)
+- Fees accumulate in WETH + YARR
+- Claimed hourly when >$10 threshold
+
+### Net Effect
+```
+Trading Activity → Fees → Auto-Claim → 20% Buyback → Hold/Burn
+                                     → 80% Diversify → Treasury Growth
+```
+
+---
+
+## 📊 Performance
+
+| Metric | Value |
+|--------|-------|
+| **Day 1 Claims** | $2,680 |
+| **Fee Rate** | ~$70-120/day (current volume) |
+| **Check Frequency** | Hourly |
+| **Claim Threshold** | $10 minimum |
+
+---
+
 ## What It Does
 
 Every hour:
@@ -14,13 +52,13 @@ Every hour:
 
 ## Portfolio Allocation
 
-| Token | Chain | Split | Contract |
-|-------|-------|-------|----------|
-| RED | Base | 20% | [`0x2e662015a501f066e043d64d04f77ffe551a4b07`](https://basescan.org/token/0x2e662015a501f066e043d64d04f77ffe551a4b07) |
-| GRT | Arbitrum | 20% | [`0x9623063377AD1B27544C965cCd7342f7EA7e88C7`](https://arbiscan.io/token/0x9623063377AD1B27544C965cCd7342f7EA7e88C7) |
-| WBTC | Base | 20% | [`0x0555E30da8f98308EdB960aa94C0Db47230d2B9c`](https://basescan.org/token/0x0555E30da8f98308EdB960aa94C0Db47230d2B9c) |
-| CLAWD | Base | 20% | [`0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07`](https://basescan.org/token/0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07) |
-| YARR | Base | 20% | [`0x309792e8950405f803c0e3f2c9083bdff4466ba3`](https://basescan.org/token/0x309792e8950405f803c0e3f2c9083bdff4466ba3) |
+| Token | Chain | Split | Why | Contract |
+|-------|-------|-------|-----|----------|
+| **RED** | Base | 20% | AI agent ecosystem token | [`0x2e66...`](https://basescan.org/token/0x2e662015a501f066e043d64d04f77ffe551a4b07) |
+| **GRT** | Arbitrum | 20% | The Graph — indexing infrastructure | [`0x9623...`](https://arbiscan.io/token/0x9623063377AD1B27544C965cCd7342f7EA7e88C7) |
+| **WBTC** | Base | 20% | Bitcoin exposure, store of value | [`0x0555...`](https://basescan.org/token/0x0555E30da8f98308EdB960aa94C0Db47230d2B9c) |
+| **CLAWD** | Base | 20% | AI agent ecosystem | [`0x9f86...`](https://basescan.org/token/0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07) |
+| **YARR** | Base | 20% | Buyback — own token | [`0x3097...`](https://basescan.org/token/0x309792e8950405f803c0e3f2c9083bdff4466ba3) |
 
 ## How It Works
 
