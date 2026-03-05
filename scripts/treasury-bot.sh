@@ -154,34 +154,23 @@ else
   # swap script controls.
   log "Transferring claimed funds from Bankr wallet to treasury..."
   
-  # Use 120s timeout for each Bankr transfer (they can be slow)
-  BANKR_TIMEOUT=120
+  # Fire-and-forget: send transfer commands, don't wait for confirmation
+  # Step 0 cleanup on next run will catch anything that didn't complete
   
   if [ "$(echo "$CLAIMABLE_WETH > 0.001" | bc -l)" = "1" ]; then
-    log "Transferring ~$CLAIMABLE_WETH WETH to treasury ($TREASURY_WALLET)... (timeout: ${BANKR_TIMEOUT}s)"
-    TRANSFER_WETH=$(timeout ${BANKR_TIMEOUT}s bankr "Transfer all WETH to $TREASURY_WALLET on Base. Execute the transfer." 2>&1 || true)
-    if echo "$TRANSFER_WETH" | grep -qiE "0x[a-f0-9]{64}"; then
-      log "✅ WETH transfer completed"
-    elif echo "$TRANSFER_WETH" | grep -qiE "timeout"; then
-      log "⏱️ WETH transfer timed out — will retry next run (funds safe in Bankr wallet)"
-    else
-      log "⚠️ WETH transfer status unclear: $(echo "$TRANSFER_WETH" | tail -2)"
-    fi
-    sleep 5
+    log "🔥 Fire-and-forget: transferring WETH to treasury..."
+    nohup bankr "Transfer all WETH to $TREASURY_WALLET on Base. Execute the transfer." >/dev/null 2>&1 &
+    log "WETH transfer dispatched (will verify next run)"
   fi
   
   if [ "$(echo "$CLAIMABLE_YARR > 1000000" | bc -l)" = "1" ]; then
-    log "Transferring ~$CLAIMABLE_YARR YARR to treasury ($TREASURY_WALLET)... (timeout: ${BANKR_TIMEOUT}s)"
-    TRANSFER_YARR=$(timeout ${BANKR_TIMEOUT}s bankr "Transfer all YARR to $TREASURY_WALLET on Base. Execute the transfer." 2>&1 || true)
-    if echo "$TRANSFER_YARR" | grep -qiE "0x[a-f0-9]{64}"; then
-      log "✅ YARR transfer completed"
-    elif echo "$TRANSFER_YARR" | grep -qiE "timeout"; then
-      log "⏱️ YARR transfer timed out — will retry next run (funds safe in Bankr wallet)"
-    else
-      log "⚠️ YARR transfer status unclear: $(echo "$TRANSFER_YARR" | tail -2)"
-    fi
-    sleep 5
+    log "🔥 Fire-and-forget: transferring YARR to treasury..."
+    nohup bankr "Transfer all YARR to $TREASURY_WALLET on Base. Execute the transfer." >/dev/null 2>&1 &
+    log "YARR transfer dispatched (will verify next run)"
   fi
+  
+  # Give transfers a head start before checking balance
+  sleep 10
   
   # ── End transfer fix ─────────────────────────────────────────────────────────
   
