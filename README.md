@@ -1,15 +1,3 @@
-# ⚠️ Repository Moved
-
-> **This repository has been consolidated to [Scallywag Labs](https://github.com/Scallywag-Labs-LLC/clawdmateytreasury).**
->
-> Development continues there — this move is for organizational consolidation only.
->
-> 📊 **Live Dashboard:** [scallywag-labs-llc.github.io/clawdmateytreasury](https://scallywag-labs-llc.github.io/clawdmateytreasury)
->
-> 🏴‍☠️ **New Repo:** [github.com/Scallywag-Labs-LLC/clawdmateytreasury](https://github.com/Scallywag-Labs-LLC/clawdmateytreasury)
-
----
-
 # Clawdmatey 🏴‍☠️🤖
 
 **clawd-matey.eth**
