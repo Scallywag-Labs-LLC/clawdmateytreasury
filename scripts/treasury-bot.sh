@@ -197,21 +197,21 @@ fi
 CLAIMED_USD=$(echo "$CLAIMED_WETH $ETH_PRICE" | awk '{printf "%.2f", $1 * $2}')
 log "Claimed WETH: \$$CLAIMED_USD"
 
-# ── Step 4: Split ONLY NEWLY CLAIMED YARR — 20% to creator, 80% to treasury ───
+# ── Step 4: Split ONLY NEWLY CLAIMED YARR — 20% to creator, 80% stays in treasury ───
 YARR_TO_CREATOR="0"
 YARR_TO_TREASURY="0"
 
-# Only split if we actually claimed YARR
-if [ "$CLAIMED_YARR" -gt 0 ] 2>/dev/null; then
-  CREATOR_YARR=$(echo "$CLAIMED_YARR $CREATOR_PCT" | awk '{printf "%.0f", $1 * $2 / 100}')
-  TREASURY_YARR=$(echo "$CLAIMED_YARR $CREATOR_YARR" | awk '{printf "%.0f", $1 - $2}')
+# Use CLAIMABLE_YARR since fire-and-forget may not be complete
+# All YARR is now in treasury, we just send 20% to creator
+if [ "$(echo "$CLAIMABLE_YARR > 1000000" | bc -l)" = "1" ]; then
+  CREATOR_YARR=$(echo "$CLAIMABLE_YARR $CREATOR_PCT" | awk '{printf "%.0f", $1 * $2 / 100}')
+  TREASURY_YARR=$(echo "$CLAIMABLE_YARR $CREATOR_YARR" | awk '{printf "%.0f", $1 - $2}')
   log "Splitting claimed YARR: $CREATOR_YARR (20%) to creator, $TREASURY_YARR (80%) to treasury"
 
   if [ "$DRY_RUN" = "true" ]; then
     log "[DRY RUN] Would send $CREATOR_YARR YARR to creator ($CREATOR_PAYOUT_WALLET)"
-    log "[DRY RUN] Would send $TREASURY_YARR YARR to treasury ($TREASURY_WALLET)"
   else
-    # Send 20% to creator
+    # Send 20% to creator (80% already in treasury from fire-and-forget)
     log "Sending $CREATOR_YARR YARR (20%) to creator..."
     CREATOR_RESULT=$($PYTHON "$SCRIPT_DIR/uniswap-swap.py" transfer --token YARR --to "$CREATOR_PAYOUT_WALLET" --amount "$CREATOR_YARR" 2>&1 || true)
     if echo "$CREATOR_RESULT" | grep -qE '"status":\s*"completed"'; then
@@ -220,16 +220,8 @@ if [ "$CLAIMED_YARR" -gt 0 ] 2>/dev/null; then
     else
       log "⚠️ YARR to creator failed: $(echo "$CREATOR_RESULT" | tail -2)"
     fi
-    
-    # Send 80% to treasury (use specific amount, not "all")
-    log "Sending $TREASURY_YARR YARR (80%) to treasury..."
-    TREASURY_RESULT=$($PYTHON "$SCRIPT_DIR/uniswap-swap.py" transfer --token YARR --to "$TREASURY_WALLET" --amount "$TREASURY_YARR" 2>&1 || true)
-    if echo "$TREASURY_RESULT" | grep -qE '"status":\s*"completed"'; then
-      log "✅ YARR to treasury completed"
-      YARR_TO_TREASURY="$TREASURY_YARR"
-    else
-      log "⚠️ YARR to treasury failed: $(echo "$TREASURY_RESULT" | tail -2)"
-    fi
+    # 80% stays in treasury (already there from fire-and-forget transfer)
+    YARR_TO_TREASURY="$TREASURY_YARR"
   fi
 else
   log "No new YARR claimed — skipping YARR split"
@@ -310,8 +302,9 @@ else
 fi
 
 # ── Step 6: Split WETH — 20% to creator, then 20% each to RED/WBTC/CLAWD/reserve
-TOTAL_WETH="$CLAIMED_WETH"
-TOTAL_USD="$CLAIMED_USD"
+# Use CLAIMABLE_WETH (from bankr fees) since fire-and-forget transfers may not be complete yet
+TOTAL_WETH="$CLAIMABLE_WETH"
+TOTAL_USD=$(echo "$CLAIMABLE_WETH $ETH_PRICE" | awk '{printf "%.2f", $1 * $2}')
 
 # Calculate creator's 20% cut
 CREATOR_WETH=$(echo "$TOTAL_WETH $CREATOR_PCT" | awk '{printf "%.6f", $1 * $2 / 100}')
