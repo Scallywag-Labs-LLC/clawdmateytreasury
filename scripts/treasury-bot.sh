@@ -58,12 +58,36 @@ get_eth_price() {
     grep -o '"usd":[0-9.]*' | cut -d: -f2
 }
 
-# ── Step 1: Check fees via bankr fees ─────────────────────────────────────────
+# ── Step 0: Check for leftover funds in Bankr wallet from previous runs ──────
 log "═══ TREASURY BOT START ═══"
 log "DRY_RUN=$DRY_RUN | threshold=\$$MIN_THRESHOLD_USD"
 
 ETH_PRICE=$(get_eth_price)
 log "ETH price: \$$ETH_PRICE"
+
+# Check if Bankr wallet has WETH that should be in treasury (from timed-out transfers)
+log "Checking Bankr wallet for leftover funds..."
+BANKR_WETH_RAW=$(curl -s -X POST "https://mainnet.base.org" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"eth_call","params":[{"to":"0x4200000000000000000000000000000000000006","data":"0x70a082310000000000000000000000008b59a7e24386d2265e9dfd6de59b4a6bbd5d1633"},"latest"],"id":1}' \
+  | grep -oE '"result":"0x[0-9a-fA-F]+"' | cut -d'"' -f4)
+BANKR_WETH=$(python3 -c "print(int('${BANKR_WETH_RAW}', 16) / 10**18)" 2>/dev/null || echo "0")
+
+if [ "$(echo "$BANKR_WETH > 0.01" | bc -l)" = "1" ]; then
+  log "⚠️ Found $BANKR_WETH WETH in Bankr wallet (leftover from previous run)"
+  log "Transferring leftover WETH to treasury first..."
+  CLEANUP_TRANSFER=$(timeout 120s bankr "Transfer all WETH to $TREASURY_WALLET on Base. Execute now." 2>&1 || true)
+  if echo "$CLEANUP_TRANSFER" | grep -qiE "0x[a-f0-9]{64}"; then
+    log "✅ Leftover WETH transferred to treasury"
+    sleep 10
+  else
+    log "⚠️ Leftover transfer failed/timed out — continuing anyway"
+  fi
+else
+  log "✓ No leftover WETH in Bankr wallet"
+fi
+
+# ── Step 1: Check fees via bankr fees ─────────────────────────────────────────
 
 log "Checking fees via 'bankr fees'..."
 FEES_OUTPUT=$(bankr fees "$CREATOR_WALLET" 2>&1 || true)
@@ -130,26 +154,33 @@ else
   # swap script controls.
   log "Transferring claimed funds from Bankr wallet to treasury..."
   
+  # Use 120s timeout for each Bankr transfer (they can be slow)
+  BANKR_TIMEOUT=120
+  
   if [ "$(echo "$CLAIMABLE_WETH > 0.001" | bc -l)" = "1" ]; then
-    log "Transferring ~$CLAIMABLE_WETH WETH to treasury ($TREASURY_WALLET)..."
-    TRANSFER_WETH=$(bankr "Transfer all WETH to $TREASURY_WALLET on Base. Execute the transfer." 2>&1 || true)
+    log "Transferring ~$CLAIMABLE_WETH WETH to treasury ($TREASURY_WALLET)... (timeout: ${BANKR_TIMEOUT}s)"
+    TRANSFER_WETH=$(timeout ${BANKR_TIMEOUT}s bankr "Transfer all WETH to $TREASURY_WALLET on Base. Execute the transfer." 2>&1 || true)
     if echo "$TRANSFER_WETH" | grep -qiE "0x[a-f0-9]{64}"; then
       log "✅ WETH transfer completed"
+    elif echo "$TRANSFER_WETH" | grep -qiE "timeout"; then
+      log "⏱️ WETH transfer timed out — will retry next run (funds safe in Bankr wallet)"
     else
-      log "⚠️ WETH transfer may have failed: $(echo "$TRANSFER_WETH" | tail -2)"
+      log "⚠️ WETH transfer status unclear: $(echo "$TRANSFER_WETH" | tail -2)"
     fi
-    sleep 8
+    sleep 5
   fi
   
   if [ "$(echo "$CLAIMABLE_YARR > 1000000" | bc -l)" = "1" ]; then
-    log "Transferring ~$CLAIMABLE_YARR YARR to treasury ($TREASURY_WALLET)..."
-    TRANSFER_YARR=$(bankr "Transfer all YARR to $TREASURY_WALLET on Base. Execute the transfer." 2>&1 || true)
+    log "Transferring ~$CLAIMABLE_YARR YARR to treasury ($TREASURY_WALLET)... (timeout: ${BANKR_TIMEOUT}s)"
+    TRANSFER_YARR=$(timeout ${BANKR_TIMEOUT}s bankr "Transfer all YARR to $TREASURY_WALLET on Base. Execute the transfer." 2>&1 || true)
     if echo "$TRANSFER_YARR" | grep -qiE "0x[a-f0-9]{64}"; then
       log "✅ YARR transfer completed"
+    elif echo "$TRANSFER_YARR" | grep -qiE "timeout"; then
+      log "⏱️ YARR transfer timed out — will retry next run (funds safe in Bankr wallet)"
     else
-      log "⚠️ YARR transfer may have failed: $(echo "$TRANSFER_YARR" | tail -2)"
+      log "⚠️ YARR transfer status unclear: $(echo "$TRANSFER_YARR" | tail -2)"
     fi
-    sleep 8
+    sleep 5
   fi
   
   # ── End transfer fix ─────────────────────────────────────────────────────────
