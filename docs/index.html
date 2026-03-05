@@ -149,12 +149,12 @@
                 <div class="card-label">Fee Distribution</div>
                 <div style="display: flex; gap: 2rem; margin: 1rem 0;">
                     <div>
-                        <div style="font-size: 1.5rem; font-weight: 600; color: var(--accent);">20%</div>
-                        <div style="color: var(--text-muted); font-size: 0.875rem;">→ Creator (Scallywag LLC)</div>
-                    </div>
-                    <div>
                         <div style="font-size: 1.5rem; font-weight: 600; color: var(--green);">80%</div>
                         <div style="color: var(--text-muted); font-size: 0.875rem;">→ Treasury + Diversify</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 1.5rem; font-weight: 600; color: var(--accent);">20%</div>
+                        <div style="color: var(--text-muted); font-size: 0.875rem;">→ Creator (Scallywag LLC)</div>
                     </div>
                 </div>
             </div>
@@ -328,7 +328,8 @@
                 const res = await fetch(apiUrl);
                 const data = await res.json();
                 
-                if (data.status === '1' && data.result.length > 0) {
+                console.log('Basescan response:', data);
+                if (data.status === '1' && data.result && data.result.length > 0) {
                     const txs = data.result.slice(0, 8).map(tx => {
                         const isOutgoing = tx.from.toLowerCase() === TREASURY.toLowerCase();
                         const isToCreator = tx.to.toLowerCase() === CREATOR_WALLET.toLowerCase();
@@ -368,11 +369,15 @@
                     }).join('');
                     txDiv.innerHTML = txs;
                 } else {
-                    txDiv.innerHTML = '<div style="color: var(--text-muted);">No recent transactions</div>';
+                    // API returned no results - show link instead
+                    txDiv.innerHTML = `<div style="color: var(--text-muted);">
+                        <a href="https://basescan.org/address/${TREASURY}#tokentxns" target="_blank" style="color: var(--accent);">View transactions on Basescan →</a>
+                    </div>`;
                 }
             } catch (err) {
+                console.log('Basescan API error:', err);
                 txDiv.innerHTML = `<div style="color: var(--text-muted);">
-                    <a href="https://basescan.org/address/${TREASURY}" target="_blank" style="color: var(--accent);">View on Basescan →</a>
+                    <a href="https://basescan.org/address/${TREASURY}#tokentxns" target="_blank" style="color: var(--accent);">View transactions on Basescan →</a>
                 </div>`;
             }
         }
