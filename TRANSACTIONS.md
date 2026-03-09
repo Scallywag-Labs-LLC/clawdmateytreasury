@@ -6,6 +6,35 @@ Public log of all treasury bot activity. Updated automatically after each run.
 
 ---
 
+## 2026-03-09
+
+### Run: 9:43 AM EST ✅
+**Claimed:** 0.142 WETH (~$284) + 309.25M YARR (~$264)
+**Total Value:** ~$548
+
+**Creator Cut (20%):**
+- 61.85M YARR → [0xFeb1...9502](https://basescan.org/address/0xFeb1DBD80Af3266062d5a5e928f9dC1FBbBe9502)
+- 0.0284 WETH (~$57) → Creator
+
+**Treasury (80%):**
+- 247.4M YARR → accumulated
+- RED buy: [0xd7e74ba8...](https://basescan.org/tx/0xd7e74ba88a966e7ed7f04b3fd15257eb54d52eda6d74be918c180e7c9c9fabdf)
+- WBTC buy: [0x86f94324...](https://basescan.org/tx/0x86f94324f278b2e87b547c3165fbab58c89330c49919fc69415480198ac643ef)
+- CLAWD buy: [0x143549ee...](https://basescan.org/tx/0x143549ee9588073cb5e1106e51de928bf14c466a3e1cd2327feb864779a90707)
+
+**Treasury Holdings After:**
+| Token | Amount | % Supply |
+|-------|--------|----------|
+| YARR | 1.96B | 1.96% |
+| RED | 403.9M | 0.40% |
+| WBTC | 0.0079 | 0.02% |
+| CLAWD | 7.7M | 0.01% |
+| WETH | 0.301 | reserve |
+
+**Status:** ✅ Full success
+
+---
+
 ## 2026-03-04
 
 ### Run: 6:00 PM EST ✅
@@ -53,6 +82,7 @@ Public log of all treasury bot activity. Updated automatically after each run.
 
 | Date | Claims | WETH Claimed | Creator Cut | Treasury Cut |
 |------|--------|--------------|-------------|--------------|
+| 2026-03-09 | 1 | 0.142 WETH | 20% | 80% |
 | 2026-03-04 | 4 | ~0.063 WETH | 20% | 80% |
 
 ---
