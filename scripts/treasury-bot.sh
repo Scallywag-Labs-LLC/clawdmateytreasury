@@ -603,8 +603,16 @@ CLAWD \$${TREASURY_CLAWD_USD} | WBTC \$${TREASURY_WBTC_USD}
 fi
 
 # ── Step 9: Update TRANSACTIONS.md and push to GitHub ─────────────────────────
+# Only post if things went well (claimed something AND at least partial success)
+SUCCESS_RUN="no"
+if [ "$(echo "$CLAIMED_WETH > 0.001" | bc -l)" = "1" ] || [ "$(echo "$CLAIMABLE_YARR > 1000000" | bc -l)" = "1" ]; then
+  if [ "$BOUGHT" -ge 0 ] && [ "$FAILED" -lt 3 ]; then
+    SUCCESS_RUN="yes"
+  fi
+fi
+
 log "Starting Step 9: Update TRANSACTIONS.md..."
-if [ "$DRY_RUN" = "false" ]; then
+if [ "$DRY_RUN" = "false" ] && [ "$SUCCESS_RUN" = "yes" ]; then
   REPO_DIR="$(dirname "$SCRIPT_DIR")"
   TX_LOG="$REPO_DIR/TRANSACTIONS.md"
   TODAY=$(date +%Y-%m-%d)
@@ -674,4 +682,7 @@ if [ "$DRY_RUN" = "false" ]; then
   fi
   
   log "📝 Step 9 complete"
+elif [ "$DRY_RUN" = "false" ] && [ "$SUCCESS_RUN" = "no" ]; then
+  log "⚠️ Skipping GitHub update — run didn't meet success criteria"
+  log "   (Need: claimed WETH > 0.001 OR YARR > 1M, AND not all buys failed)"
 fi
