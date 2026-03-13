@@ -37,6 +37,7 @@ CLAWD_TOKEN="0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07"
 # Burn address (standard dead address)
 BURN_ADDRESS="0x000000000000000000000000000000000000dEaD"
 BURN_THRESHOLD_PCT=5  # Burn YARR if wallet holds > 5% of supply
+YARR_TRANSFERRED="no"  # Track fire-and-forget YARR transfer
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="$(dirname "$SCRIPT_DIR")/logs"
@@ -167,6 +168,7 @@ else
     log "🔥 Fire-and-forget: transferring YARR to treasury..."
     nohup bankr "Transfer all YARR to $TREASURY_WALLET on Base. Execute the transfer." >/dev/null 2>&1 &
     log "YARR transfer dispatched (will verify next run)"
+    YARR_TRANSFERRED="yes"
   fi
   
   # Give transfers a head start before checking balance
